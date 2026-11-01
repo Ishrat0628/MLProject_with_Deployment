@@ -1,0 +1,60 @@
+version: 0.2
+
+# AWS CodeBuild buildspec for Student Performance ML Project (Flask ML Application)
+# Handles installation, pre-build validation, build testing, and deployment artifact packaging
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+    commands:
+      - echo "===== PHASE 1: INSTALL ====="
+      - echo "Upgrading packaging tools..."
+      - python -m pip install --upgrade pip setuptools wheel
+      - echo "Installing application dependencies..."
+      - pip install -r requirements.txt
+
+  pre_build:
+    commands:
+      - echo "===== PHASE 2: PRE-BUILD ====="
+      - echo "Verifying Python environment and module imports..."
+      - python -c "from src.exception import CustomException; from src.logger import logging; from src.utils import load_object, save_object; print('Exception, Logger, and Utils modules loaded successfully')"
+      - python -c "from src.pipeline.predict_pipeline import PredictPipeline, CustomData; print('Predict pipeline loaded successfully')"
+      - python -c "from src.pipeline.train_pipeline import TrainPipeline; print('Train pipeline loaded successfully')"
+      - echo "Pre-build validation checks passed."
+
+  build:
+    commands:
+      - echo "===== PHASE 3: BUILD & TEST ====="
+      - echo "Validating Flask web application instance..."
+      - python -c "from application import app; client = app.test_client(); assert client.get('/').status_code == 200; assert client.get('/predictdata').status_code == 200; print('Flask web endpoints verified successfully')"
+      - echo "Verifying trained model and preprocessor artifacts with sample inference..."
+      - python -c "import os; from src.pipeline.predict_pipeline import PredictPipeline, CustomData; assert os.path.exists('artifacts/model.pkl'), 'Missing model.pkl'; assert os.path.exists('artifacts/proprocessor.pkl'), 'Missing preprocessor.pkl'; d=CustomData('female','group B','some college','standard','none',72,74); p=PredictPipeline(); res=p.predict(d.get_data_as_data_frame()); print('Prediction sanity test PASSED. Predicted Math Score:', res[0])"
+      - echo "Build and tests completed successfully."
+
+  post_build:
+    commands:
+      - echo "===== PHASE 4: POST-BUILD ====="
+      - echo "Preparing artifacts for AWS Elastic Beanstalk deployment..."
+      - echo "Build and packaging finished on $(date)"
+
+artifacts:
+  files:
+    - 'application.py'
+    - 'requirements.txt'
+    - 'setup.py'
+    - '.ebextensions/**/*'
+    - 'templates/**/*'
+    - 'src/**/*'
+    - 'artifacts/**/*'
+  exclude-paths:
+    - '**/__pycache__/**/*'
+    - '**/*.pyc'
+    - 'logs/**/*'
+    - 'notebook/**/*'
+    - 'venv/**/*'
+    - 'catboost_info/**/*'
+
+cache:
+  paths:
+    - '/root/.cache/pip/**/*'
